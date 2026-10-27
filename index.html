@@ -44,8 +44,9 @@
         <p class="muted">Usamos isso para dividir o dia em manhã, tarde e noite e calcular quanto cabe em cada período.</p>
         <div class="field-row">
           <label class="field">Acordo às<input type="time" id="ob-wake" value="07:00"></label>
-          <label class="field">Durmo às<input type="time" id="ob-sleep" value="23:30"></label>
+          <label class="field">Durmo às<input type="time" id="ob-sleep" value="23:45"></label>
         </div>
+        <p class="muted small" id="ob-periods">☀️ 07:00–12:00   🌤️ 12:00–18:00   🌙 18:00–23:45</p>
       </div>
 
       <div class="ob-step" data-step="3" hidden>
@@ -154,6 +155,7 @@
           <label class="field">Acordo às<input type="time" id="set-wake"></label>
           <label class="field">Durmo às<input type="time" id="set-sleep"></label>
         </div>
+        <p class="muted small" id="set-periods"></p>
         <label class="field">Ritmo
           <select id="set-pace"></select>
         </label>

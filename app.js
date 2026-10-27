@@ -89,6 +89,14 @@ function baseRecs(s, goal) {
   return r;
 }
 
+// Seletor de hora em 12h facilita marcar 11:45 (manhã) querendo 23:45. Ninguém dorme entre a hora
+// de acordar e as 18h, então nesse caso troca AM/PM (11:45 → 23:45, 13:00 → 01:00).
+function fixSleep(wake, sleep) {
+  const w = toMin(wake), sl = toMin(sleep);
+  if (sl > w && sl < 1080) return hhmm(sl < 720 ? sl + 720 : sl - 720);
+  return sleep;
+}
+
 // O "dia" vira no meio do sono, não à meia-noite: uso à 00h30 ainda conta como a noite anterior.
 function dayCut(s) {
   const sl = toMin(s.sleep), w = toMin(s.wake);
@@ -123,7 +131,8 @@ function periodRanges(s, date) {
     const d = parseIso(date); d.setDate(d.getDate() + plusDays); d.setMinutes(min); return d.getTime();
   };
   const cut = dayCut(s);
-  return { m: [at(cut), at(720)], t: [at(720), at(1080)], n: [at(1080), at(cut, 1)] };
+  // Manhã começa no meio do sono, então pega todo o uso do dia desde a madrugada.
+  return { m: [at(cut < 720 ? cut : 0), at(720)], t: [at(720), at(1080)], n: [at(1080), at(cut, 1)] };
 }
 function nativeSync() {
   if (!state.settings || !hasUsage()) return;
@@ -265,7 +274,7 @@ function renderToday() {
       </div>
       <div class="bar ${cls}"><span style="width:${clamp(r, 0, 1) * 100}%"></span></div>
       <div class="period-foot"><span><b>${fmt(used)}</b> <span class="muted">de ${fmt(round5(rec))}</span></span>
-        <span class="muted">${used > rec ? `<span class="bad-t">+${fmt(used - rec)}</span>` : `${fmt(round5(rec) - used)} livres`}</span></div>
+        <span class="muted">${used > round5(rec) ? `<span class="bad-t">+${fmt(used - round5(rec))}</span>` : `${fmt(round5(rec) - used)} livres`}</span></div>
       ${adjusted}
     </button>`;
   }).join('');
@@ -383,12 +392,24 @@ function renderSettings() {
   $('#set-target').value = s.target / 60;
   $('#set-wake').value = s.wake;
   $('#set-sleep').value = s.sleep;
+  showPeriods('#set-periods', s.wake, s.sleep);
   $('#set-pace').innerHTML = PACES.map((p) => `<option value="${p.step}" ${p.step === s.step ? 'selected' : ''}>${p.name} (${p.desc})</option>`).join('');
   const avg = recentAverage();
   $('#restart-hint').textContent = avg
     ? `Recomeça a progressão a partir de hoje usando sua média dos últimos dias (${fmt(avg)}) como ponto de partida.`
     : 'Recomeça a progressão a partir de hoje.';
 }
+// Mostra os períodos em 24h, para não ter dúvida de AM/PM.
+function showPeriods(sel, wake, sleep) {
+  if (!wake || !sleep) return;
+  const b = periodBounds({ wake, sleep: fixSleep(wake, sleep) });
+  $(sel).textContent = PERIODS.map((p) => `${p.icon} ${hhmm(b[p.id][0])}–${hhmm(b[p.id][1])}`).join('   ');
+}
+['#set-wake', '#set-sleep'].forEach((id) => $(id).addEventListener('input', () =>
+  showPeriods('#set-periods', $('#set-wake').value, $('#set-sleep').value)));
+['#ob-wake', '#ob-sleep'].forEach((id) => $(id).addEventListener('input', () =>
+  showPeriods('#ob-periods', $('#ob-wake').value, $('#ob-sleep').value)));
+
 function recentAverage() {
   const info = nowInfo(state.settings);
   const vals = [];
@@ -477,11 +498,11 @@ $('#settings-form').addEventListener('submit', (e) => {
   const baseline = round5(Number($('#set-baseline').value) * 60);
   const target = round5(Number($('#set-target').value) * 60);
   if (!(target > 0) || target >= baseline) return toast('A meta final precisa ser menor que a média inicial.');
-  Object.assign(state.settings, {
-    baseline, target, wake: $('#set-wake').value, sleep: $('#set-sleep').value, step: Number($('#set-pace').value),
-  });
+  const wake = $('#set-wake').value, sleep = fixSleep(wake, $('#set-sleep').value);
+  Object.assign(state.settings, { baseline, target, wake, sleep, step: Number($('#set-pace').value) });
   touchDay(nowInfo(state.settings).date);
-  save(); toast('Salvo!'); render();
+  nativeSync();
+  save(); toast(sleep !== $('#set-sleep').value ? `Salvo! Entendi que você dorme às ${sleep}.` : 'Salvo!'); render();
 });
 $('#btn-restart').addEventListener('click', () => {
   if (!confirm('Recomeçar o plano a partir de hoje?')) return;
@@ -532,7 +553,7 @@ function obSettings() {
     baseline: round5(Number($('#ob-baseline').value) * 60),
     target: round5(Number($('#ob-target').value) * 60),
     wake: $('#ob-wake').value || '07:00',
-    sleep: $('#ob-sleep').value || '23:30',
+    sleep: fixSleep($('#ob-wake').value || '07:00', $('#ob-sleep').value || '23:45'),
     step: ob.step_pace,
     startDate: iso(new Date()),
   };
@@ -596,7 +617,12 @@ function enterApp() {
 }
 
 /* ---------- Início ---------- */
-if (state.settings) enterApp(); else startOnboarding();
+if (state.settings) {
+  state.settings.sleep = fixSleep(state.settings.wake, state.settings.sleep);
+  enterApp();
+} else {
+  startOnboarding();
+}
 // Atualiza a tela quando o app volta ao primeiro plano e a cada minuto (troca de período/dia).
 const refresh = () => { nativeSync(); if (currentView !== 'settings') render(); };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
