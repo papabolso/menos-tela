@@ -5,6 +5,9 @@
     <!-- Necessário para ler o tempo de uso do celular (o usuário libera em Configurações). -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Para mostrar nome e ícone de cada app na análise de uso. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Para descobrir qual é o launcher (tempo na tela inicial não conta como uso). -->
     <queries>
         <intent>

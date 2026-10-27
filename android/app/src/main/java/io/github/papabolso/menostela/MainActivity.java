@@ -117,6 +117,21 @@ public class MainActivity extends Activity {
             return Usage.between(MainActivity.this, (long) start, (long) end);
         }
 
+        /** Relatório do dia em JSON: por hora, por app e desbloqueios. */
+        @JavascriptInterface
+        public String getDayReport(double start, double end) {
+            try {
+                return Usage.report(MainActivity.this, (long) start, (long) end).toString();
+            } catch (Exception e) {
+                return "{\"total\":0,\"unlocks\":0,\"hours\":[],\"apps\":[]}";
+            }
+        }
+
+        @JavascriptInterface
+        public String getAppIcon(String pkg) {
+            return Usage.icon(MainActivity.this, pkg);
+        }
+
         /** Guarda as configurações do plano para os widgets calcularem a meta sozinhos. */
         @JavascriptInterface
         public void saveSettings(String json) {
