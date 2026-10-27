@@ -26,6 +26,8 @@
         <p class="muted">Primeiro: qual é a sua <b>média diária atual</b>? Você encontra isso em <i>Bem-estar digital</i> (Android) ou <i>Tempo de Uso</i> (iPhone).</p>
         <div class="big-value" id="ob-baseline-label">10h</div>
         <input type="range" id="ob-baseline" min="2" max="16" step="0.25" value="10">
+        <button class="btn" id="ob-real-avg" hidden>📲 Usar minha média real dos últimos 7 dias</button>
+        <p class="muted small" id="ob-real-note"></p>
       </div>
 
       <div class="ob-step" data-step="1" hidden>
@@ -87,7 +89,9 @@
 
       <div id="alerts" class="alerts"></div>
 
-      <div class="card sync">
+      <div class="card auto" id="auto-card" hidden></div>
+
+      <div class="card sync" id="sync-card">
         <div class="sync-head">
           <div>
             <h3>Quanto o celular marca hoje?</h3>

@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+}
+
+// A interface web fica na raiz do repositório (é a mesma do GitHub Pages).
+def webRoot = rootProject.projectDir.parentFile
+def webOut = layout.buildDirectory.dir('generated/web')
+
+tasks.register('copyWeb', Copy) {
+    from(webRoot) {
+        include 'index.html', 'style.css', 'app.js', 'icon.svg', 'icon-192.png', 'manifest.webmanifest'
+    }
+    into webOut.map { it.dir('www') }
+}
+preBuild.dependsOn 'copyWeb'
+
+android {
+    namespace 'io.github.papabolso.menostela'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.github.papabolso.menostela'
+        minSdk 29
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('VERSION_CODE') ?: '1')
+        versionName System.getenv('VERSION_NAME') ?: '1.0'
+    }
+
+    sourceSets {
+        main.assets.srcDirs += webOut
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv('KEYSTORE_PATH')
+            if (ks) {
+                storeFile file(ks)
+                storeType 'pkcs12'
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias 'menostela'
+                keyPassword System.getenv('KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv('KEYSTORE_PATH') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

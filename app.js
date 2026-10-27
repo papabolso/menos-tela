@@ -14,6 +14,8 @@ const PACES = [
   { step: 8, name: 'Gradual', desc: '−8 min por dia' },
 ];
 const MAX_FIRST_CUT = 120; // corte máximo no 1º dia (min)
+// Presente só dentro do app Android: lê o tempo de tela direto do sistema.
+const Native = window.MenosTelaNative || null;
 
 /* ---------- Estado ---------- */
 let state = load();
@@ -90,7 +92,7 @@ function baseRecs(s, goal) {
 // O "dia" vira no meio do sono, não à meia-noite: uso à 00h30 ainda conta como a noite anterior.
 function dayCut(s) {
   const sl = toMin(s.sleep), w = toMin(s.wake);
-  return (sl + ((w - sl + 1440) % 1440) / 2) % 1440;
+  return Math.round(sl + ((w - sl + 1440) % 1440) / 2) % 1440;
 }
 function nowInfo(s, now = new Date()) {
   const t = now.getHours() * 60 + now.getMinutes();
@@ -110,6 +112,44 @@ function touchDay(date) {
   if (!state.days[date]) state.days[date] = { m: 0, t: 0, n: 0 };
   state.days[date].goal = goalFor(state.settings, date);
   return state.days[date];
+}
+
+/* ---------- Leitura automática (app Android) ---------- */
+const hasUsage = () => !!Native && Native.hasUsagePermission();
+
+// Intervalos reais (epoch ms) de cada período de um dia lógico.
+function periodRanges(s, date) {
+  const at = (min, plusDays = 0) => {
+    const d = parseIso(date); d.setDate(d.getDate() + plusDays); d.setMinutes(min); return d.getTime();
+  };
+  const cut = dayCut(s);
+  return { m: [at(cut), at(720)], t: [at(720), at(1080)], n: [at(1080), at(cut, 1)] };
+}
+function nativeSync() {
+  if (!state.settings || !hasUsage()) return;
+  const s = state.settings, now = Date.now(), today = nowInfo(s).date;
+  for (const date of [addDays(today, -1), today]) {
+    if (date < s.startDate) continue;
+    const r = periodRanges(s, date);
+    const day = date === today ? touchDay(date) : (state.days[date] || touchDay(date));
+    PERIODS.forEach((p) => {
+      const [a, b] = r[p.id];
+      day[p.id] = a < now ? Math.round(Native.getUsage(a, Math.min(b, now)) / 60000) : 0;
+    });
+  }
+  state.lastAuto = now;
+  save();
+}
+// Média dos últimos 7 dias completos (meia-noite a meia-noite), ignorando dias sem uso.
+function nativeAverage() {
+  const vals = [];
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 7; i++) {
+    const end = d.getTime(); d.setDate(d.getDate() - 1);
+    const min = Native.getUsage(d.getTime(), end) / 60000;
+    if (min > 5) vals.push(min);
+  }
+  return vals.length ? { avg: vals.reduce((a, x) => a + x, 0) / vals.length, n: vals.length } : null;
 }
 
 function analyze(s, date, pid) {
@@ -192,6 +232,21 @@ function renderToday() {
   $('#alerts').innerHTML = buildAlerts(s, info, a)
     .map(([k, ic, msg]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${msg}</span></div>`).join('');
 
+  const auto = hasUsage();
+  const card = $('#auto-card');
+  card.hidden = !Native;
+  $('#sync-card').hidden = auto;
+  if (Native && !auto) {
+    card.className = 'card auto need';
+    card.innerHTML = `<div class="txt"><h3>Leitura automática</h3><p class="muted small">Libere o acesso ao uso para o app ler seu tempo de tela sozinho, sem precisar digitar nada.</p></div>
+      <button class="btn primary" id="btn-perm">Permitir acesso ao uso</button>`;
+  } else if (auto) {
+    const at = state.lastAuto ? new Date(state.lastAuto).toTimeString().slice(0, 5) : '—';
+    card.className = 'card auto';
+    card.innerHTML = `<span>📲</span><div class="txt">Lido automaticamente do celular<br><span class="muted small">atualizado às ${at}</span></div>
+      <button class="pill" id="btn-refresh">Atualizar</button>`;
+  }
+
   const b = periodBounds(s);
   $('#periods').innerHTML = PERIODS.map((p, i) => {
     const used = a.day[p.id];
@@ -202,7 +257,7 @@ function renderToday() {
       : i < a.idx ? '<span class="period-badge past">encerrado</span>' : '';
     const adjusted = i >= a.idx && Math.abs(rec - a.base[p.id]) >= 5
       ? `<div class="adj">recalculado (era ${fmt(round5(a.base[p.id]))})</div>` : '';
-    return `<button class="period ${i === a.idx ? 'now' : ''}" data-edit="${p.id}">
+    return `<button class="period ${i === a.idx ? 'now' : ''}" ${auto ? 'disabled' : `data-edit="${p.id}"`}>
       <div class="period-head">
         <span class="period-icon">${p.icon}</span>
         <div><div class="period-name">${p.name}</div><div class="period-range">${hhmm(b[p.id][0])}–${hhmm(b[p.id][1])}</div></div>
@@ -389,6 +444,11 @@ $$('[data-add]').forEach((b) => b.addEventListener('click', () => {
   toast(`+${min}min na ${name}`);
 }));
 
+$('#auto-card').addEventListener('click', (e) => {
+  if (e.target.id === 'btn-perm') Native.openUsageSettings();
+  if (e.target.id === 'btn-refresh') { nativeSync(); render(); toast('Atualizado.'); }
+});
+
 // Editar período
 let editing = null;
 $('#periods').addEventListener('click', (e) => {
@@ -433,6 +493,7 @@ $('#btn-restart').addEventListener('click', () => {
   save(); toast('Plano recomeçado.'); render();
 });
 $('#btn-export').addEventListener('click', () => {
+  if (Native) return Native.shareBackup(JSON.stringify(state));
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -494,6 +555,20 @@ function obRender() {
   const n = daysToTarget(s);
   $('#ob-preview').innerHTML = `Você começa com <b>${fmt(first)}</b> já hoje e chega em <b>${fmt(s.target)}</b> em <b>${n + 1} dias</b>, por volta de ${dateLabel(addDays(s.startDate, n), { day: 'numeric', month: 'long' })}.`;
 }
+function obApplyRealAvg() {
+  const r = nativeAverage();
+  if (!r) { $('#ob-real-note').textContent = 'Ainda não há dados de uso suficientes no celular.'; return; }
+  $('#ob-baseline').value = clamp(Math.round(r.avg / 15) / 4, 2, 16);
+  $('#ob-real-note').textContent = `Sua média real nos últimos ${r.n} dias foi ${fmt(r.avg)}.`;
+  obRender();
+}
+let obWaitingPerm = false;
+$('#ob-real-avg').hidden = !Native;
+$('#ob-real-avg').addEventListener('click', () => {
+  if (hasUsage()) return obApplyRealAvg();
+  obWaitingPerm = true;
+  Native.openUsageSettings();
+});
 $('#ob-baseline').addEventListener('input', obRender);
 $('#ob-target').addEventListener('input', obRender);
 $('#ob-paces').addEventListener('click', (e) => {
@@ -516,16 +591,29 @@ $('#ob-next').addEventListener('click', () => {
 function enterApp() {
   $('#onboarding').hidden = true;
   $('#app').hidden = false;
+  nativeSync();
   show('today');
 }
 
 /* ---------- Início ---------- */
 if (state.settings) enterApp(); else startOnboarding();
 // Atualiza a tela quando o app volta ao primeiro plano e a cada minuto (troca de período/dia).
-const refresh = () => { if (currentView !== 'settings') render(); };
+const refresh = () => { nativeSync(); if (currentView !== 'settings') render(); };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(refresh, 60_000);
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+// Chamados pelo app Android.
+window.onNativeResume = () => {
+  if (!state.settings) { if (obWaitingPerm && hasUsage()) { obWaitingPerm = false; obApplyRealAvg(); } return; }
+  refresh();
+};
+window.onNativeBack = () => {
+  if ($('#edit-dialog').open) { $('#edit-dialog').close(); return true; }
+  if (state.settings && currentView !== 'today') { show('today'); return true; }
+  if (!state.settings && ob.step > 0) { ob.step--; obRender(); return true; }
+  return false;
+};
+
+if (!Native && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
