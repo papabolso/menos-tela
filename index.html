@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Menos Tela</title>
+  <meta name="description" content="Metas progressivas de tempo de tela, divididas por período do dia.">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Onboarding -->
+  <section id="onboarding" class="onboarding" hidden>
+    <div class="ob-inner">
+      <div class="ob-progress"><span id="ob-bar"></span></div>
+
+      <div class="ob-step" data-step="0">
+        <div class="ob-emoji">📱</div>
+        <h1>Vamos reduzir seu tempo de tela</h1>
+        <p class="muted">Primeiro: qual é a sua <b>média diária atual</b>? Você encontra isso em <i>Bem-estar digital</i> (Android) ou <i>Tempo de Uso</i> (iPhone).</p>
+        <div class="big-value" id="ob-baseline-label">10h</div>
+        <input type="range" id="ob-baseline" min="2" max="16" step="0.25" value="10">
+      </div>
+
+      <div class="ob-step" data-step="1" hidden>
+        <div class="ob-emoji">🎯</div>
+        <h1>Onde você quer chegar?</h1>
+        <p class="muted">Sua meta diária final. Vamos chegar lá aos poucos — mas sem enrolar.</p>
+        <div class="big-value" id="ob-target-label">6h</div>
+        <input type="range" id="ob-target" min="1" max="10" step="0.25" value="6">
+      </div>
+
+      <div class="ob-step" data-step="2" hidden>
+        <div class="ob-emoji">⏰</div>
+        <h1>Sua rotina</h1>
+        <p class="muted">Usamos isso para dividir o dia em manhã, tarde e noite e calcular quanto cabe em cada período.</p>
+        <div class="field-row">
+          <label class="field">Acordo às<input type="time" id="ob-wake" value="07:00"></label>
+          <label class="field">Durmo às<input type="time" id="ob-sleep" value="23:30"></label>
+        </div>
+      </div>
+
+      <div class="ob-step" data-step="3" hidden>
+        <div class="ob-emoji">📉</div>
+        <h1>Qual ritmo?</h1>
+        <p class="muted">No primeiro dia já cortamos uma boa parte. Depois a meta desce um pouco todo dia.</p>
+        <div class="pace-list" id="ob-paces"></div>
+        <div class="preview" id="ob-preview"></div>
+      </div>
+
+      <div class="ob-nav">
+        <button class="btn ghost" id="ob-back" hidden>Voltar</button>
+        <button class="btn primary" id="ob-next">Continuar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- App -->
+  <main id="app" hidden>
+    <!-- HOJE -->
+    <section class="view" id="view-today">
+      <header class="top">
+        <div>
+          <div class="eyebrow" id="today-date"></div>
+          <h2 id="today-title">Hoje</h2>
+        </div>
+        <div class="chip" id="today-day"></div>
+      </header>
+
+      <div class="card ring-card">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-track" cx="60" cy="60" r="52"/>
+          <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-used" id="ring-used">0min</div>
+          <div class="ring-goal" id="ring-goal">de 8h</div>
+          <div class="ring-left" id="ring-left"></div>
+        </div>
+      </div>
+
+      <div id="alerts" class="alerts"></div>
+
+      <div class="card sync">
+        <div class="sync-head">
+          <div>
+            <h3>Quanto o celular marca hoje?</h3>
+            <p class="muted small">Copie o total do Bem-estar digital / Tempo de Uso. A diferença vai para o período atual.</p>
+          </div>
+        </div>
+        <form id="sync-form" class="sync-row">
+          <label class="dur"><input type="number" id="sync-h" inputmode="numeric" min="0" max="23" placeholder="0"><span>h</span></label>
+          <label class="dur"><input type="number" id="sync-m" inputmode="numeric" min="0" max="59" placeholder="00"><span>min</span></label>
+          <button class="btn primary" type="submit">Atualizar</button>
+        </form>
+        <div class="quick">
+          <span class="muted small">ou some agora:</span>
+          <button class="pill" data-add="5">+5</button>
+          <button class="pill" data-add="15">+15</button>
+          <button class="pill" data-add="30">+30</button>
+        </div>
+      </div>
+
+      <div id="periods" class="periods"></div>
+    </section>
+
+    <!-- PLANO -->
+    <section class="view" id="view-plan" hidden>
+      <header class="top"><div><div class="eyebrow">Seu plano</div><h2>Progressão</h2></div></header>
+      <div class="stats" id="plan-stats"></div>
+      <div class="card">
+        <h3>Meta diária ao longo dos dias</h3>
+        <div id="plan-chart" class="chart"></div>
+        <div class="legend">
+          <span><i class="lg-line"></i>meta do dia</span>
+          <span><i class="lg-dot ok"></i>dentro</span>
+          <span><i class="lg-dot bad"></i>acima</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Como seu dia é dividido</h3>
+        <div id="plan-split"></div>
+      </div>
+      <div class="card explain">
+        <h3>Como funciona</h3>
+        <p class="muted small">No 1º dia a meta já corta metade da distância até o objetivo (no máximo 2h). Depois ela desce no ritmo escolhido até chegar na sua meta final. A recomendação de cada período é proporcional às horas acordado nele, com peso menor à noite — perto de dormir a tela atrapalha mais o sono. Se você passar num período, os períodos seguintes são recalculados com o que sobrou.</p>
+      </div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="view" id="view-history" hidden>
+      <header class="top"><div><div class="eyebrow">Histórico</div><h2>Seus dias</h2></div></header>
+      <div class="stats" id="hist-stats"></div>
+      <div id="hist-list" class="hist-list"></div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section class="view" id="view-settings" hidden>
+      <header class="top"><div><div class="eyebrow">Ajustes</div><h2>Configurações</h2></div></header>
+      <form id="settings-form" class="card form">
+        <label class="field">Média inicial (horas)<input type="number" id="set-baseline" step="0.25" min="1" max="20"></label>
+        <label class="field">Meta final (horas)<input type="number" id="set-target" step="0.25" min="0.5" max="20"></label>
+        <div class="field-row">
+          <label class="field">Acordo às<input type="time" id="set-wake"></label>
+          <label class="field">Durmo às<input type="time" id="set-sleep"></label>
+        </div>
+        <label class="field">Ritmo
+          <select id="set-pace"></select>
+        </label>
+        <button class="btn primary" type="submit">Salvar</button>
+      </form>
+      <div class="card form">
+        <h3>Plano</h3>
+        <p class="muted small" id="restart-hint">Recomeça a progressão a partir de hoje.</p>
+        <button class="btn" id="btn-restart">Recomeçar plano hoje</button>
+      </div>
+      <div class="card form">
+        <h3>Seus dados</h3>
+        <p class="muted small">Tudo fica salvo só neste aparelho. Faça um backup de vez em quando.</p>
+        <div class="btn-row">
+          <button class="btn" id="btn-export">Exportar backup</button>
+          <label class="btn">Importar<input type="file" id="file-import" accept="application/json" hidden></label>
+        </div>
+        <button class="btn danger" id="btn-reset">Apagar tudo</button>
+      </div>
+    </section>
+
+    <nav class="tabbar">
+      <button data-view="today" class="active"><span>◔</span>Hoje</button>
+      <button data-view="plan"><span>↘</span>Plano</button>
+      <button data-view="history"><span>▤</span>Histórico</button>
+      <button data-view="settings"><span>⚙</span>Ajustes</button>
+    </nav>
+  </main>
+
+  <dialog id="edit-dialog">
+    <form method="dialog" id="edit-form">
+      <h3 id="edit-title">Editar</h3>
+      <p class="muted small">Quanto você usou neste período?</p>
+      <div class="sync-row">
+        <label class="dur"><input type="number" id="edit-h" inputmode="numeric" min="0" max="23"><span>h</span></label>
+        <label class="dur"><input type="number" id="edit-m" inputmode="numeric" min="0" max="59"><span>min</span></label>
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn primary" value="save">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
