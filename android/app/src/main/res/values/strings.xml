@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_small_desc">Tempo de tela de hoje e se está tranquilo</string>
+    <string name="widget_medium_desc">Tempo de hoje, períodos do dia e aviso</string>
+</resources>

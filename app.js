@@ -23,7 +23,11 @@ function load() {
   try { return JSON.parse(localStorage.getItem(KEY)) || { settings: null, days: {}, sync: null }; }
   catch { return { settings: null, days: {}, sync: null }; }
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  // Os widgets do Android calculam a meta sozinhos a partir destas configurações.
+  if (Native && Native.saveSettings && state.settings) Native.saveSettings(JSON.stringify(state.settings));
+}
 
 /* ---------- Utilidades ---------- */
 const $ = (s) => document.querySelector(s);
