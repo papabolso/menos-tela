@@ -8,6 +8,7 @@ import base64
 import datetime
 import pathlib
 import secrets
+import shutil
 import subprocess
 import sys
 
@@ -41,7 +42,10 @@ data = pkcs12.serialize_key_and_certificates(b"menostela", key, cert, None, enc)
 (out / "menostela.p12").write_bytes(data)
 (out / "senha.txt").write_text(password)
 
+# O gh instalado pelo winget pode não estar no PATH de terminais abertos antes da instalação.
+gh = shutil.which("gh") or str(next(
+    (pathlib.Path.home() / "AppData/Local/Microsoft/WinGet/Packages").glob("GitHub.cli*/bin/gh.exe"), "gh"))
 for secret, value in [("KEYSTORE_BASE64", base64.b64encode(data).decode()), ("KEYSTORE_PASSWORD", password)]:
-    subprocess.run(["gh", "secret", "set", secret, "-R", repo], input=value, text=True, check=True)
+    subprocess.run([gh, "secret", "set", secret, "-R", repo], input=value, text=True, check=True)
 
 print(f"Pronto! Chave salva em {out} (guarde uma cópia) e enviada aos Secrets de {repo}.")
