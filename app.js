@@ -101,22 +101,14 @@ function fixSleep(wake, sleep) {
   return sleep;
 }
 
-// O "dia" vira no meio do sono, não à meia-noite: uso à 00h30 ainda conta como a noite anterior.
-function dayCut(s) {
-  const sl = toMin(s.sleep), w = toMin(s.wake);
-  return Math.round(sl + ((w - sl + 1440) % 1440) / 2) % 1440;
-}
+// O dia vira à meia-noite, igual ao Bem-estar digital. Acordar/dormir só servem para dividir a meta;
+// uso de madrugada conta na manhã.
 function nowInfo(s, now = new Date()) {
   const t = now.getHours() * 60 + now.getMinutes();
-  const cut = dayCut(s);
-  const d = new Date(now);
-  if (cut < 720 && t < cut) d.setDate(d.getDate() - 1);
-  const rel = (x) => (x - cut + 1440) % 1440;
-  const pid = rel(t) < rel(720) ? 'm' : rel(t) < rel(1080) ? 't' : 'n';
+  const pid = t < 720 ? 'm' : t < 1080 ? 't' : 'n';
   const b = periodBounds(s)[pid];
-  const clock = pid === 'n' && t < 720 ? t + 1440 : t;
-  const frac = clamp((clock - b[0]) / (b[1] - b[0]), 0, 1);
-  return { date: iso(d), pid, frac, calDate: iso(now) };
+  const frac = clamp((t - b[0]) / (b[1] - b[0]), 0, 1);
+  return { date: iso(now), pid, frac, calDate: iso(now) };
 }
 
 function getDay(date) { return state.days[date] || { m: 0, t: 0, n: 0 }; }
@@ -129,14 +121,12 @@ function touchDay(date) {
 /* ---------- Leitura automática (app Android) ---------- */
 const hasUsage = () => !!Native && Native.hasUsagePermission();
 
-// Intervalos reais (epoch ms) de cada período de um dia lógico.
+// Intervalos reais (epoch ms) de cada período do dia, de meia-noite a meia-noite.
 function periodRanges(s, date) {
   const at = (min, plusDays = 0) => {
     const d = parseIso(date); d.setDate(d.getDate() + plusDays); d.setMinutes(min); return d.getTime();
   };
-  const cut = dayCut(s);
-  // Manhã começa no meio do sono, então pega todo o uso do dia desde a madrugada.
-  return { m: [at(cut < 720 ? cut : 0), at(720)], t: [at(720), at(1080)], n: [at(1080), at(cut, 1)] };
+  return { m: [at(0), at(720)], t: [at(720), at(1080)], n: [at(1080), at(0, 1)] };
 }
 function nativeSync() {
   if (!state.settings || !hasUsage()) return;

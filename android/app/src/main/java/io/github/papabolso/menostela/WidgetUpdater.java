@@ -89,20 +89,18 @@ final class WidgetUpdater {
 
             int sl = slRaw <= w ? slRaw + 1440 : slRaw;
             int[][] b = {{w, Math.max(w + 60, 720)}, {Math.max(720, w), 1080}, {1080, Math.max(1140, sl)}};
-            int cut = (int) (Math.round(slRaw + ((w - slRaw + 1440) % 1440) / 2.0) % 1440);
 
+            // Dia de meia-noite a meia-noite, como o Bem-estar digital; madrugada conta na manhã.
             ZoneId z = ZoneId.systemDefault();
             ZonedDateTime now = ZonedDateTime.now(z);
             int t = now.getHour() * 60 + now.getMinute();
             LocalDate date = now.toLocalDate();
-            if (cut < 720 && t < cut) date = date.minusDays(1);
-            int rt = rel(t, cut);
-            s.idx = rt < rel(720, cut) ? 0 : rt < rel(1080, cut) ? 1 : 2;
+            s.idx = t < 720 ? 0 : t < 1080 ? 1 : 2;
 
             long[][] r = {
-                    {ms(date, cut < 720 ? cut : 0, z), ms(date, 720, z)},
+                    {ms(date, 0, z), ms(date, 720, z)},
                     {ms(date, 720, z), ms(date, 1080, z)},
-                    {ms(date, 1080, z), ms(date.plusDays(1), cut, z)},
+                    {ms(date, 1080, z), ms(date.plusDays(1), 0, z)},
             };
             long nowMs = System.currentTimeMillis();
             for (int i = 0; i < 3; i++) {
@@ -156,7 +154,6 @@ final class WidgetUpdater {
     }
 
     private static long round5(double x) { return Math.round(x / 5.0) * 5; }
-    private static int rel(int x, int cut) { return ((x - cut) % 1440 + 1440) % 1440; }
     private static int toMin(String hhmm) {
         String[] p = hhmm.split(":");
         return Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]);
