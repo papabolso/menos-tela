@@ -78,8 +78,13 @@ final class HistoryDb extends SQLiteOpenHelper {
 
     private void put(LocalDate d, double[] hours, boolean fin) {
         double total = 0;
-        JSONArray a = new JSONArray();
-        for (double h : hours) { total += h; a.put(Math.round(h * 10) / 10.0); }
+        StringBuilder a = new StringBuilder("[");
+        for (int i = 0; i < hours.length; i++) {
+            total += hours[i];
+            if (i > 0) a.append(',');
+            a.append(Math.round(hours[i] * 10) / 10.0);
+        }
+        a.append(']');
         ContentValues v = new ContentValues();
         v.put("date", d.toString());
         v.put("hours", a.toString());
