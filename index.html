@@ -83,6 +83,7 @@
         <div class="hero-num"><span id="hero-used">0min</span><span class="hero-goal" id="hero-goal"></span></div>
         <div class="meter"><span id="hero-bar"></span></div>
         <p class="hero-sub" id="hero-sub"></p>
+        <p class="hero-trend" id="hero-trend" hidden></p>
         <div class="kpis" id="hero-kpis"></div>
       </article>
 
@@ -182,6 +183,16 @@
         <label class="field">Ritmo<select id="set-pace"></select></label>
         <button class="btn primary" type="submit">Salvar</button>
       </form>
+      <div class="card form" id="notify-card" hidden>
+        <h2>Notificações</h2>
+        <p class="muted small">Só avisa quando a previsão indica de fato que você vai passar da meta: no máximo 2 por dia, com 90 min de intervalo.</p>
+        <p class="small" id="notify-status"></p>
+        <button class="btn" id="btn-notify" type="button">Permitir notificações</button>
+      </div>
+      <div class="card form" id="calib-card" hidden>
+        <h2>Calibragem da previsão</h2>
+        <div id="calib-body"></div>
+      </div>
       <div class="card form">
         <h2>Plano</h2>
         <p class="muted small" id="restart-hint">Recomeça a progressão a partir de hoje.</p>

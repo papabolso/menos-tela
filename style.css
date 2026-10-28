@@ -149,7 +149,13 @@ input[type=range] { padding: 0; background: none; border: 0; accent-color: var(-
   display: inline-flex; align-items: center; gap: 6px;
 }
 .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.hero-trend { font-size: 13px; margin-top: 4px; }
+.hero-trend b { font-weight: 650; }
+.status.neutral { color: var(--muted); background: var(--surface-2); }
 .status.ok { color: var(--ok); background: var(--accent-soft); }
+.calib-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 8px 0; border-top: 1px solid var(--line); }
+.calib-row:first-child { border-top: 0; }
+.calib-row span:last-child { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .status.warn { color: var(--warn); background: var(--warn-soft); }
 .status.bad { color: var(--bad); background: var(--bad-soft); }
 

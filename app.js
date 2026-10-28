@@ -36,9 +36,13 @@ function load() {
   catch { return { settings: null, days: {}, sync: null }; }
 }
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
-  // Os widgets do Android calculam a meta sozinhos a partir destas configurações.
-  if (Native && Native.saveSettings && state.settings) Native.saveSettings(JSON.stringify(state.settings));
+  const json = JSON.stringify(state);
+  try { localStorage.setItem(KEY, json); } catch {}
+  if (!Native) return;
+  // Cópia de segurança na pasta privada do app (latest.json + uma por dia).
+  if (Native.saveBackup && state.settings) Native.saveBackup(json);
+  // Os widgets e as notificações calculam a meta sozinhos a partir destas configurações.
+  if (Native.saveSettings && state.settings) Native.saveSettings(JSON.stringify(state.settings));
 }
 
 /* ---------- Utilidades ---------- */
@@ -203,6 +207,11 @@ function nativeSync() {
   state.lastAuto = Date.now();
   save();
 }
+// Tendência do dia calculada no Android (curva histórica + ritmo de hoje).
+function trend() {
+  if (!hasUsage() || !Native.getTrend) return null;
+  try { return JSON.parse(Native.getTrend()); } catch { return null; }
+}
 // Total de um dia: do Android se disponível, senão do que foi registrado.
 function dayTotal(date) {
   const r = report(date);
@@ -321,11 +330,26 @@ function renderToday() {
   $('#today-date').textContent = dateLabel(info.date);
   $('#today-day').textContent = `Dia ${daysBetween(s.startDate, info.date) + 1} do plano`;
 
-  // Destaque
-  const level = a.used > a.goal ? 'bad' : alerts.some((x) => x[0] === 'warn') ? 'warn' : 'ok';
+  // Destaque: com Android, o status vem da tendência (a mesma do widget); sem, das regras por período.
+  const t = trend();
   const status = $('#hero-status');
+  let level;
+  if (t && t.ready) {
+    level = ['neutral', 'ok', 'warn', 'bad'][t.level + 1];
+    status.textContent = t.shortMsg;
+  } else {
+    level = a.used > a.goal ? 'bad' : alerts.some((x) => x[0] === 'warn') ? 'warn' : 'ok';
+    status.textContent = level === 'bad' ? 'Acima da meta' : level === 'warn' ? 'Dá uma reduzida' : 'Tranquilo';
+  }
   status.className = `status ${level}`;
-  status.textContent = level === 'bad' ? 'Acima da meta' : level === 'warn' ? 'Dá uma reduzida' : 'Tranquilo';
+  const trendEl = $('#hero-trend');
+  trendEl.hidden = !(t && t.ready);
+  if (t && t.ready) {
+    trendEl.innerHTML = t.valid
+      ? `Previsão para hoje: <b>${fmt(t.projected)}</b> · ${t.diffText} para este horário`
+      : `<span class="muted">${esc(t.msg)}</span>`;
+  }
+  if (level === 'neutral') level = 'ok';
   $('#hero-used').textContent = fmt(a.used);
   $('#hero-goal').textContent = `de ${fmt(a.goal)}`;
   const bar = $('#hero-bar');
@@ -583,11 +607,43 @@ function renderSettings() {
   $('#set-sleep').value = s.sleep;
   showPeriods('#set-periods', s.wake, s.sleep);
   $('#set-pace').innerHTML = PACES.map((p) => `<option value="${p.step}" ${p.step === s.step ? 'selected' : ''}>${p.name} (${p.desc})</option>`).join('');
+  renderNotifyCalib();
   const a = recentAverage();
   $('#restart-hint').textContent = a
     ? `Recomeça a progressão a partir de hoje usando sua média dos últimos dias (${fmt(a)}) como ponto de partida.`
     : 'Recomeça a progressão a partir de hoje.';
 }
+function renderNotifyCalib() {
+  const native = !!(Native && Native.getCalibration);
+  $('#notify-card').hidden = !native;
+  $('#calib-card').hidden = !native;
+  if (!native) return;
+
+  const allowed = Native.notificationsAllowed();
+  $('#notify-status').innerHTML = allowed ? '<span class="ok-t">Ativadas</span>' : '<span class="bad-t">Desativadas</span>';
+  $('#btn-notify').hidden = allowed;
+
+  let c = {};
+  try { c = JSON.parse(Native.getCalibration()); } catch {}
+  const slots = (c.slots || []).map((s) => `<div class="calib-row"><span>Previsão das ${s.slot}h</span><span>${s.n
+    ? `erro médio ${fmt(s.mae)} · ${s.bias >= 0 ? 'superestima' : 'subestima'} ${fmt(Math.abs(s.bias))} · ${s.n} ${s.n === 1 ? 'dia' : 'dias'}`
+    : 'sem dias fechados ainda'}</span></div>`).join('');
+  const proj = (c.projections || []).slice(0, 6).map((p) => `<div class="calib-row"><span>${dateLabel(p.date, { day: 'numeric', month: 'short' })}, ${p.slot}h</span>
+    <span>previu ${fmt(p.projected)} · real ${p.actual == null ? '—' : fmt(p.actual)}</span></div>`).join('');
+  const notes = (c.notifications || []).slice(0, 5).map((n) => {
+    const d = new Date(n.at);
+    return `<div class="calib-row"><span>${dateLabel(iso(d), { day: 'numeric', month: 'short' })}, ${pad(d.getHours())}h${pad(d.getMinutes())}</span>
+      <span>uso ${fmt(n.used)} · previsão ${fmt(n.projected)} · meta às ${esc(n.eta).replace(':', 'h')}</span></div>`;
+  }).join('');
+  $('#calib-body').innerHTML = `
+    <p class="muted small">A previsão é registrada às 14h e às 18h e comparada com o uso real no fim do dia.</p>
+    <div>${slots}</div>
+    ${proj ? `<h3 class="small muted" style="margin-top:6px">Últimas previsões</h3><div>${proj}</div>` : ''}
+    <h3 class="small muted" style="margin-top:6px">Notificações enviadas</h3>
+    ${notes ? `<div>${notes}</div>` : '<p class="muted small">Nenhuma ainda.</p>'}`;
+}
+$('#btn-notify').addEventListener('click', () => Native && Native.requestNotifications());
+
 // Mostra os períodos em 24h, para não ter dúvida de AM/PM.
 function showPeriods(sel, wake, sleep) {
   if (!wake || !sleep) return;
@@ -814,6 +870,7 @@ setInterval(refresh, 60_000);
 window.onNativeResume = () => {
   if (!state.settings) { if (obWaitingPerm && hasUsage()) { obWaitingPerm = false; obApplyRealAvg(); } return; }
   refresh();
+  if (currentView === 'settings') renderNotifyCalib(); // ex.: voltou de liberar notificações
 };
 window.onNativeBack = () => {
   for (const d of ['#app-sheet', '#edit-dialog']) if ($(d).open) { $(d).close(); return true; }

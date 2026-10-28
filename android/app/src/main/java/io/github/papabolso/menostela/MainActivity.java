@@ -1,8 +1,13 @@
 package io.github.papabolso.menostela;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
@@ -20,6 +25,7 @@ public class MainActivity extends Activity {
     // Origem fixa: o localStorage (onde ficam os dados) fica preso a ela.
     private static final String APP_URL = "https://appassets.androidplatform.net/assets/www/index.html";
     private static final int PICK_FILE = 1;
+    private static final int ASK_NOTIFICATIONS = 2;
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
@@ -58,6 +64,26 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "MenosTelaNative");
         web.loadUrl(APP_URL);
         setContentView(web);
+
+        CheckWorker.schedule(getApplicationContext());
+        askNotificationsOnce();
+    }
+
+    /** Pede a permissão de notificação uma única vez (Android 13+). Depois, só pelo botão nos Ajustes. */
+    private void askNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        SharedPreferences sp = getSharedPreferences(Plan.PREFS, MODE_PRIVATE);
+        if (sp.getBoolean("askedNotifications", false)) return;
+        sp.edit().putBoolean("askedNotifications", true).apply();
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, ASK_NOTIFICATIONS);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (web != null) web.evaluateJavascript("window.onNativeResume && window.onNativeResume()", null);
     }
 
     @Override
@@ -130,6 +156,48 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getAppIcon(String pkg) {
             return Usage.icon(MainActivity.this, pkg);
+        }
+
+        /** Tendência do dia (mesma do widget), em JSON. */
+        @JavascriptInterface
+        public String getTrend() {
+            return Trend.toJson(Trend.compute(MainActivity.this)).toString();
+        }
+
+        /** Erro das projeções registradas e últimas notificações, em JSON. */
+        @JavascriptInterface
+        public String getCalibration() {
+            try {
+                return HistoryDb.get(MainActivity.this).calibration().toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        @JavascriptInterface
+        public boolean notificationsAllowed() {
+            return getSystemService(NotificationManager.class).areNotificationsEnabled();
+        }
+
+        /** Pede a permissão (Android 13+) ou abre as configurações de notificação do app. */
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        && shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, ASK_NOTIFICATIONS);
+                } else {
+                    startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+                }
+            });
+        }
+
+        /** Cópia automática dos dados do app na pasta privada. */
+        @JavascriptInterface
+        public void saveBackup(String json) {
+            Backup.save(getApplicationContext(), json);
         }
 
         /** Guarda as configurações do plano para os widgets calcularem a meta sozinhos. */
