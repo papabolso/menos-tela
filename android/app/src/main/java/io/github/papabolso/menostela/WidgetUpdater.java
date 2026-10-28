@@ -53,9 +53,17 @@ final class WidgetUpdater {
         return PendingIntent.getActivity(c, 0, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
+    /** "🔥 5" ao lado do status; some quando a sequência está zerada. */
+    private static void streak(RemoteViews v, Trend.Result r) {
+        int n = r.streak != null ? r.streak.current : 0;
+        v.setViewVisibility(R.id.streak, n > 0 ? View.VISIBLE : View.GONE);
+        v.setTextViewText(R.id.streak, "🔥 " + n);
+    }
+
     private static RemoteViews small(Context c, Trend.Result r) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_small);
         v.setOnClickPendingIntent(R.id.root, openApp(c));
+        streak(v, r);
         v.setTextViewText(R.id.used, r.ready ? Plan.fmt(r.used) : "—");
         v.setTextViewText(R.id.goal, r.ready ? "/ " + Plan.fmt(r.goal) : "");
         v.setTextViewText(R.id.status, r.shortMsg);
@@ -67,6 +75,7 @@ final class WidgetUpdater {
     private static RemoteViews medium(Context c, Trend.Result r) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_medium);
         v.setOnClickPendingIntent(R.id.root, openApp(c));
+        streak(v, r);
         int[] bars = {R.id.bar_ok, R.id.bar_warn, R.id.bar_bad};
         v.setTextViewText(R.id.status, r.msg);
         v.setTextColor(R.id.status, color(c, r.level));

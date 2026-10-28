@@ -27,6 +27,7 @@ final class Trend {
         double[] per = new double[3];
         String shortMsg = "Abra o app", msg = "Abra o app para configurar.", diffText = "";
         LocalDate date;
+        Streak.Result streak;
 
         JSONObject toJson() throws JSONException {
             JSONObject o = new JSONObject();
@@ -44,6 +45,7 @@ final class Trend {
             o.put("msg", msg);
             o.put("diffText", diffText);
             o.put("minHistDays", Tuning.HISTORY_MIN_DAYS);
+            if (streak != null) o.put("streak", streak.toJson());
             return o;
         }
     }
@@ -71,7 +73,7 @@ final class Trend {
             return r;
         }
         HistoryDb db = HistoryDb.get(c);
-        db.sync(c, today, r.hours, z);
+        db.sync(c, p, today, r.hours, z);
         List<double[]> hist = db.recentDays(today, Tuning.HISTORY_MAX_DAYS, Tuning.MIN_DAY_TOTAL_MIN);
 
         r.ready = true;
@@ -80,6 +82,7 @@ final class Trend {
             r.per[h < 12 ? 0 : h < 18 ? 1 : 2] += r.hours[h];
         }
         r.goal = p.goalFor(today);
+        r.streak = Streak.compute(c, p, today, r.used);
         r.nowMin = now.getHour() * 60 + now.getMinute();
         r.idx = r.nowMin < 720 ? 0 : r.nowMin < 1080 ? 1 : 2;
         r.endMin = Math.max(p.dayEnd(), r.nowMin);

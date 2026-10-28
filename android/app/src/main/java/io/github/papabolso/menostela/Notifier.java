@@ -61,8 +61,11 @@ final class Notifier {
 
         int minutesToGoal = (int) Math.ceil((r.goal - r.used) / Math.max(rate, 0.01));
         String eta = LocalTime.now().plusMinutes(minutesToGoal).withSecond(0).withNano(0).toString();
-        post(c, nm, "No ritmo atual você chega na meta de " + Plan.fmt(r.goal) + " por volta das " + eta.replace(":", "h") + ".",
-                "Hoje: " + Plan.fmt(r.used) + " · previsão " + Plan.fmt(r.projected) + ".");
+        String body = "Hoje: " + Plan.fmt(r.used) + " · previsão " + Plan.fmt(r.projected) + ".";
+        if (r.streak != null && r.streak.current >= 2) {
+            body += " Segura hoje que a sequência vai para " + (r.streak.current + 1) + " dias.";
+        }
+        post(c, nm, "No ritmo atual você chega na meta de " + Plan.fmt(r.goal) + " por volta das " + eta.replace(":", "h") + ".", body);
 
         sp.edit().putLong("lastAt", System.currentTimeMillis()).putInt("count", count + 1).apply();
         HistoryDb.get(c).logNotification(LocalDate.parse(today), r, lastHour, eta);

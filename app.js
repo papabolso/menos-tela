@@ -27,7 +27,13 @@ const ICON = {
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
   warn: svg('<path d="M12 3.5L2.5 20h19L12 3.5z"/><path d="M12 10v4M12 17h.01"/>'),
   bad: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>'),
+  flame: svg('<path d="M12 3c1 3.5 5 5.6 5 10a5 5 0 0 1-10 0c0-2.2 1-3.7 2.3-4.9.3 1.6 1.1 2.6 2.2 3 .3-3.2-.4-5.7.5-8.1z"/>'),
+  shield: svg('<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/>'),
 };
+// Sequência (iguais ao Tuning.java do Android)
+const SHIELD_TOLERANCE = 1.15;
+const SHIELDS_PER_WEEK = 1;
+const MILESTONES = [3, 7, 14, 30];
 
 /* ---------- Estado ---------- */
 let state = load();
@@ -362,10 +368,11 @@ function renderToday() {
   const yesterday = dayTotal(addDays(info.date, -1));
   const mean = avg7(info.date);
   $('#hero-kpis').innerHTML = kpis([
-    auto && r ? [r.unlocks, 'desbloqueios'] : [streak(info.date), 'dias seguidos'],
+    auto && r ? [r.unlocks, 'desbloqueios'] : [fmt(a.goal), 'meta de hoje'],
     [yesterday ? fmt(yesterday) : '—', 'ontem'],
     [mean ? fmt(mean) : '—', 'média 7 dias'],
   ]);
+  renderStreak(streakInfo(info.date, t));
 
   $('#alerts').innerHTML = alerts.map(([k, msg]) => `<div class="alert ${k}">${ICON[k]}<span>${msg}</span></div>`).join('');
 
@@ -407,13 +414,68 @@ function renderToday() {
   }
 }
 
-function streak(today) {
+/* ---------- Sequência ---------- */
+// Semana ISO (segunda a domingo), igual ao Android.
+function isoWeek(date) {
+  const d = parseIso(date);
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y = t.getUTCFullYear();
+  return y * 100 + Math.ceil(((t - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
+}
+const isMilestone = (n) => MILESTONES.includes(n) || (n > 30 && n % 30 === 0);
+
+// No Android vem pronta da tendência (histórico nativo); sem Android, calcula com os dias registrados.
+function streakInfo(today, t = trend()) {
+  if (t && t.streak) return t.streak;
   const s = state.settings;
-  let n = 0;
-  for (let d = addDays(today, -1); state.days[d]; d = addDays(d, -1)) {
-    if (sumDay(state.days[d]) <= (state.days[d].goal ?? goalFor(s, d))) n++; else break;
+  const usedShields = {};
+  const r = { current: 0, best: 0, shielded: [], milestone: 0 };
+  for (let d = s.startDate; d < today; d = addDays(d, 1)) {
+    const day = state.days[d];
+    if (!day) continue; // sem dados: não conta nem quebra
+    const total = sumDay(day), goal = day.goal ?? goalFor(s, d), w = isoWeek(d);
+    if (total <= goal) r.current++;
+    else if (total <= goal * SHIELD_TOLERANCE && (usedShields[w] || 0) < SHIELDS_PER_WEEK) {
+      usedShields[w] = (usedShields[w] || 0) + 1;
+      r.shielded.push(d);
+      r.current++;
+    } else r.current = 0;
+    r.best = Math.max(r.best, r.current);
   }
-  return n;
+  const used = sumDay(getDay(today));
+  r.todayGoal = goalFor(s, today);
+  r.shieldLimit = r.todayGoal * SHIELD_TOLERANCE;
+  r.shieldsLeft = Math.max(0, SHIELDS_PER_WEEK - (usedShields[isoWeek(today)] || 0));
+  r.todayWithin = used <= r.todayGoal;
+  r.todayShieldable = !r.todayWithin && used <= r.shieldLimit && r.shieldsLeft > 0;
+  if (isMilestone(r.current)) r.milestone = r.current;
+  return r;
+}
+
+function renderStreak(st) {
+  const card = $('#streak-card');
+  card.classList.toggle('zero', st.current === 0);
+  const days = st.current === 1 ? 'dia' : 'dias';
+  let note;
+  if (st.todayWithin) {
+    note = ['good', ICON.ok, `Hoje está dentro da meta. Fechando assim, vai para ${st.current + 1}.`];
+  } else if (st.todayShieldable) {
+    note = ['warn', ICON.shield, `Passou da meta, mas o escudo da semana salva a sequência se você fechar o dia até ${fmt(st.shieldLimit)}.`];
+  } else {
+    note = ['bad', ICON.bad, st.current > 0
+      ? 'Hoje passou do limite do escudo. A sequência recomeça amanhã; o recorde fica.'
+      : 'Hoje passou da meta. Amanhã é um bom dia para começar uma sequência.'];
+  }
+  card.innerHTML = `
+    <div class="streak-main">
+      <span class="flame">${ICON.flame}</span>
+      <div><div class="streak-num">${st.current} ${days}</div><div class="muted small">seguidos dentro da meta</div></div>
+      <div class="streak-best">Recorde<b>${Math.max(st.best, st.current)}</b></div>
+    </div>
+    ${st.milestone ? `<p class="milestone">Marco de ${st.milestone} dias seguidos. Boa!</p>` : ''}
+    <p class="streak-note ${note[0]}">${note[1]}<span>${note[2]}</span></p>
+    <p class="streak-note">${ICON.shield}<span>Escudo da semana: ${st.shieldsLeft > 0 ? 'disponível' : 'já usado'}. Ele salva um dia que passar até 15% da meta.</span></p>`;
 }
 
 /* ---------- Render: Apps ---------- */
@@ -567,14 +629,14 @@ function renderHistory() {
   const s = state.settings;
   const info = nowInfo(s);
   const dates = Object.keys(state.days).filter((d) => d <= info.date).sort().reverse();
-  const finished = dates.filter((d) => d < info.date);
-  const hit = finished.filter((d) => sumDay(state.days[d]) <= (state.days[d].goal ?? goalFor(s, d))).length;
   const mean = avg7(info.date);
+  const st = streakInfo(info.date);
+  const shielded = new Set(st.shielded || []);
 
   $('#hist-stats').innerHTML = kpis([
-    [streak(info.date), 'dias seguidos na meta'],
+    [st.current, 'sequência atual'],
+    [Math.max(st.best, st.current), 'recorde'],
     [mean ? fmt(mean) : '—', 'média 7 dias'],
-    [finished.length ? `${hit}/${finished.length}` : '—', 'dias cumpridos'],
   ]);
   $('#week-chart').innerHTML = weekSvg(lastDays(info.date));
 
@@ -587,7 +649,8 @@ function renderHistory() {
     const used = sumDay(day);
     const goal = day.goal ?? goalFor(s, d);
     const scale = Math.max(used, goal) * 1.05 || 1;
-    const mark = d === info.date ? '' : used <= goal ? '<span class="ok-t">✓</span>' : '<span class="bad-t">✗</span>';
+    const mark = d === info.date ? '' : used <= goal ? '<span class="ok-t">✓</span>'
+      : shielded.has(d) ? '<span class="shield-t">escudo</span>' : '<span class="bad-t">✗</span>';
     return `<div class="hist">
       <div class="hist-top"><span class="d">${d === info.date ? 'Hoje' : dateLabel(d, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
         <span class="num"><b>${fmt(used)}</b> <span class="muted">/ ${fmt(goal)}</span> ${mark}</span></div>

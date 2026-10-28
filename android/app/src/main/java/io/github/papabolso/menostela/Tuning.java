@@ -35,4 +35,9 @@ final class Tuning {
 
     /* Horários em que a projeção é registrada para medir o erro */
     static final int[] CALIBRATION_HOURS = {14, 18};
+
+    /* Sequência de dias dentro da meta */
+    static final double SHIELD_TOLERANCE = 1.15;      // escudo salva dias até 15% acima da meta
+    static final int SHIELDS_PER_WEEK = 1;            // semana de segunda a domingo
+    static final int[] STREAK_MILESTONES = {3, 7, 14, 30}; // depois de 30, a cada 30 dias
 }

@@ -13,7 +13,9 @@ import org.json.JSONObject;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Banco nativo novo (menostela.db). Não substitui nada: os dados do app continuam no localStorage.
@@ -24,7 +26,8 @@ import java.util.List;
  */
 final class HistoryDb extends SQLiteOpenHelper {
     private static final String NAME = "menostela.db";
-    private static final int VERSION = 1;
+    // 1: tabelas iniciais. 2: day_hours.goal (meta do dia, para a sequência).
+    private static final int VERSION = 2;
     private static HistoryDb instance;
 
     static synchronized HistoryDb get(Context c) {
@@ -38,7 +41,7 @@ final class HistoryDb extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE day_hours (date TEXT PRIMARY KEY, hours TEXT NOT NULL, total REAL NOT NULL, final INTEGER NOT NULL, updated INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE day_hours (date TEXT PRIMARY KEY, hours TEXT NOT NULL, total REAL NOT NULL, final INTEGER NOT NULL, updated INTEGER NOT NULL, goal REAL)");
         db.execSQL("CREATE TABLE projection_log (date TEXT NOT NULL, slot INTEGER NOT NULL, at INTEGER NOT NULL, used REAL NOT NULL, "
                 + "expected_now REAL NOT NULL, projected REAL NOT NULL, goal REAL NOT NULL, hist_days INTEGER NOT NULL, actual REAL, PRIMARY KEY (date, slot))");
         db.execSQL("CREATE TABLE notification_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, date TEXT NOT NULL, "
@@ -47,7 +50,11 @@ final class HistoryDb extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Versão 1 é a primeira. Próximas versões: migrações aditivas aqui, uma por versão.
+        // Só migrações aditivas, uma por versão. Nada é apagado.
+        if (oldVersion < 2) {
+            // Linhas existentes ficam com goal NULL; a sequência usa a meta do plano para elas.
+            db.execSQL("ALTER TABLE day_hours ADD COLUMN goal REAL");
+        }
     }
 
     /* ---------- Uso por hora ---------- */
@@ -56,18 +63,38 @@ final class HistoryDb extends SQLiteOpenHelper {
      * Grava o dia de hoje e completa os dias anteriores que ainda não estão fechados (lendo do Android
      * enquanto os eventos existem). Dias fechados nunca são reescritos.
      */
-    synchronized void sync(Context c, LocalDate today, double[] todayHours, ZoneId z) {
-        put(today, todayHours, false);
+    synchronized void sync(Context c, Plan p, LocalDate today, double[] todayHours, ZoneId z) {
+        put(today, todayHours, false, p.goalFor(today));
         for (int i = 1; i <= Tuning.HISTORY_MAX_DAYS; i++) {
             LocalDate d = today.minusDays(i);
             if (isFinal(d)) continue;
             try {
                 JSONObject r = Usage.report(c, ms(d, z), ms(d.plusDays(1), z));
-                put(d, hoursOf(r), true);
+                // Mantém a meta que o dia já tinha (se as configurações mudaram depois, o dia não muda).
+                Double goal = storedGoal(d);
+                put(d, hoursOf(r), true, goal != null ? goal : p.goalFor(d));
             } catch (JSONException ignored) {
                 // tenta de novo na próxima checagem
             }
         }
+    }
+
+    private Double storedGoal(LocalDate d) {
+        try (Cursor cur = getReadableDatabase().rawQuery("SELECT goal FROM day_hours WHERE date = ?", new String[]{d.toString()})) {
+            return cur.moveToFirst() && !cur.isNull(0) ? cur.getDouble(0) : null;
+        }
+    }
+
+    /** Total e meta (ou -1 se não registrada) de cada dia a partir de `from`. */
+    synchronized Map<String, double[]> totalsSince(LocalDate from) {
+        Map<String, double[]> out = new HashMap<>();
+        try (Cursor cur = getReadableDatabase().rawQuery("SELECT date, total, goal FROM day_hours WHERE date >= ?",
+                new String[]{from.toString()})) {
+            while (cur.moveToNext()) {
+                out.put(cur.getString(0), new double[]{cur.getDouble(1), cur.isNull(2) ? -1 : cur.getDouble(2)});
+            }
+        }
+        return out;
     }
 
     private boolean isFinal(LocalDate d) {
@@ -76,7 +103,7 @@ final class HistoryDb extends SQLiteOpenHelper {
         }
     }
 
-    private void put(LocalDate d, double[] hours, boolean fin) {
+    private void put(LocalDate d, double[] hours, boolean fin, double goal) {
         double total = 0;
         StringBuilder a = new StringBuilder("[");
         for (int i = 0; i < hours.length; i++) {
@@ -91,6 +118,7 @@ final class HistoryDb extends SQLiteOpenHelper {
         v.put("total", total);
         v.put("final", fin ? 1 : 0);
         v.put("updated", System.currentTimeMillis());
+        v.put("goal", goal);
         getWritableDatabase().insertWithOnConflict("day_hours", null, v, SQLiteDatabase.CONFLICT_REPLACE);
     }
 

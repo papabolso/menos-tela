@@ -109,5 +109,16 @@
             android:text="Tranquilo, dentro do plano."
             android:textColor="@color/w_ok"
             android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="🔥 5"
+            android:textColor="@color/w_text"
+            android:textSize="13sp"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>
